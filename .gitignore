@@ -1,1 +1,3 @@
 analyst/
+.env
+source analyst/bin/activate
