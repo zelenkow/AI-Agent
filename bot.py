@@ -47,7 +47,6 @@ async def get_avito_chats(access_token):
     'limit': 10,
     'offset': 0
 }
-
     url = f"https://api.avito.ru/messenger/v2/accounts/{DIKON_ID}/chats"
 
     async with aiohttp.ClientSession() as session:
