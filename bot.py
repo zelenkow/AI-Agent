@@ -41,15 +41,33 @@ async def get_avito_token():
             token_cache['avito_token'] = new_token
             return new_token
         
+async def get_avito_chats(access_token):
+    headers =  {'Authorization': f'Bearer {access_token}'}
+    params = {
+    'limit': 10,
+    'offset': 0
+}
 
+    url = f"https://api.avito.ru/messenger/v2/accounts/{DIKON_ID}/chats"
+
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url, headers=headers, params=params) as response:
+            if response.status == 200:
+                chats_data = await response.json()
+                return chats_data.get('chats', [])
+            else:
+                logger.error(f"Ошибка получения чатов: {response.status}")
+                return []
+        
 @dp.message(Command("report"))
 async def report(message: types.Message):
     token = await get_avito_token()
     await message.answer(f"Токен получен: {token}") 
+    chats = await get_avito_chats(token)
+    await message.answer(f"Найдено чатов: {len(chats)}")
 
 @dp.message()
 async def send_way(message: types.Message):
-    #print(message.model_dump_json(indent=4, exclude_none=True))  Для вывода JSON только с активными параметрами
     await message.answer("Для формирования отчета, нажмите Меню и выберите Сформировать отчет")
 
 if __name__ == "__main__":
