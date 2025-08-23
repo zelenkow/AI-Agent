@@ -1,6 +1,7 @@
 import os
 import logging
 import aiohttp
+from cachetools import TTLCache
 from dotenv import load_dotenv
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
@@ -17,7 +18,14 @@ DIKON_ID = os.getenv("DIKON_USER_ID")
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
+token_cache = TTLCache(maxsize=1, ttl=23.5 * 60 * 60)
+
 async def get_avito_token():
+
+    if 'avito_token' in token_cache:
+        logger.info("Используется кешированный токен Avito")
+        return token_cache['avito_token']
+    logger.info("Запрашивается новый токен Avito")
     data_api = {
         'client_id': CLIENT_ID,
         'client_secret': CLIENT_SECRET,
@@ -29,7 +37,10 @@ async def get_avito_token():
             data=data_api,
         ) as response:
             token_data = await response.json()
-            return token_data["access_token"]
+            new_token = token_data["access_token"]
+            token_cache['avito_token'] = new_token
+            return new_token
+        
 
 @dp.message(Command("report"))
 async def report(message: types.Message):
