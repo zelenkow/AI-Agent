@@ -43,27 +43,47 @@ async def get_avito_token():
         
 async def get_avito_chats(access_token):
     headers =  {'Authorization': f'Bearer {access_token}'}
-    params = {
-    'limit': 10,
-    'offset': 0
-}
+    params = {'limit': 3,'offset': 0}
     url = f"https://api.avito.ru/messenger/v2/accounts/{DIKON_ID}/chats"
 
     async with aiohttp.ClientSession() as session:
         async with session.get(url, headers=headers, params=params) as response:
             if response.status == 200:
-                chats_data = await response.json()
-                return chats_data.get('chats', [])
+                raw_chats = await response.json()
+                return raw_chats
             else:
                 logger.error(f"Ошибка получения чатов: {response.status}")
-                return []
-        
+                return {}
+            
+def map_avito_chats(raw_chats_data, my_user_id):
+    mapped_chats = []
+    
+    for chat in raw_chats_data.get('chats', []):
+        client_name = 'Неизвестный клиент'
+        for user in chat.get('users', []):
+            if user.get('id') != my_user_id and user.get('name'):
+                client_name = user['name']
+                break
+
+        mapped_chat = {
+            'chat_id': chat.get('id', 'Без названия'),
+            'title': chat.get('context', {}).get('value', {}).get('title', 'Без названия'),
+            'client_name': client_name,
+            'created_at': chat.get('created', 0),
+            'updated_at': chat.get('updated', 0)
+        }
+        mapped_chats.append(mapped_chat)
+    
+    return mapped_chats
+
 @dp.message(Command("report"))
 async def report(message: types.Message):
     token = await get_avito_token()
-    await message.answer(f"Токен получен: {token}") 
-    chats = await get_avito_chats(token)
-    await message.answer(f"Найдено чатов: {len(chats)}")
+    await message.answer(f"Токен получен: {token}")
+    raw_data_chats = await get_avito_chats(token)
+    await message.answer(f"Сырые данные чата получены")
+    map_data_chats = map_avito_chats(raw_data_chats, DIKON_ID)  
+    await message.answer(str(map_data_chats))
 
 @dp.message()
 async def send_way(message: types.Message):
