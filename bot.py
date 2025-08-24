@@ -55,6 +55,20 @@ async def get_avito_chats(access_token):
                 logger.error(f"Ошибка получения чатов: {response.status}")
                 return {}
             
+async def get_avito_messages(access_token, chat_id):
+    headers = {'Authorization': f'Bearer {access_token}'}
+    params = {'limit': 100, 'offset': 0}
+    url = f"https://api.avito.ru/messenger/v1/accounts/{DIKON_ID}/chats/{chat_id}/messages"
+
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url, headers=headers, params=params) as response:
+            if response.status == 200:
+                raw_messages = await response.json()
+                return raw_messages
+            else:
+                logger.error(f"Ошибка получения сообщений: {response.status}")
+                return {}
+            
 def map_avito_chats(raw_chats_data, my_user_id):
     mapped_chats = []
     
