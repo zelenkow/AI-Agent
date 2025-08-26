@@ -1,3 +1,5 @@
 analyst/
 .env
+.dockerignore
+backup.sql
 source analyst/bin/activate
