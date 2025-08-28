@@ -1,4 +1,5 @@
 import os
+import json
 import logging
 import aiohttp
 import asyncpg
@@ -28,6 +29,35 @@ dp = Dispatcher()
 
 token_cache = TTLCache(maxsize=1, ttl=23.5 * 60 * 60)
 
+async def all_doing_for_messages(access_token):
+    #all_messages_to_save = []
+    chats_list = await get_chat_from_db()
+    for chat_id in chats_list:
+        raw_messages = await get_avito_messages(access_token, chat_id)
+        filename = "avito_messages_chat.json"
+        with open(filename, 'w', encoding='utf-8') as f:
+            json.dump(raw_messages, f, ensure_ascii=False, indent=2)
+
+        return ()
+        #mapped_messages = map_avito_messages(raw_messages, chat_id)
+        #all_messages_to_save.extend(mapped_messages)
+
+#def map_avito_messages(raw_messages_data,):
+
+
+async def get_chat_from_db():
+    connection_string = f"postgresql://{PG_USER}:{PG_PASSWORD}@{PG_HOST}:{PG_PORT}/{PG_DATABASE}"
+    conn = await asyncpg.connect(connection_string)
+
+    try:
+        query = "SELECT chat_id FROM chats;"
+        chat_ids = await conn.fetch(query)
+        chats_list = [record['chat_id'] for record in chat_ids]
+        logger.info(f"Из БД получено {len(chats_list)} chat_id для обработки.")
+        return chats_list
+    finally:
+        await conn.close()
+
 async def get_avito_token():
     if 'avito_token' in token_cache:
         logger.info("Используется кешированный токен Avito")
@@ -48,7 +78,7 @@ async def get_avito_token():
             token_cache['avito_token'] = new_token
             return new_token
 
-async def get_map_save_chats(access_token):
+async def all_doing_for_chats(access_token):
     raw_data_chats = await get_avito_chats(access_token)
     map_data_chats = map_avito_chats(raw_data_chats, DIKON_ID)
     await save_chats_to_db(map_data_chats)
@@ -100,7 +130,7 @@ async def get_avito_chats(access_token):
 async def get_avito_messages(access_token, chat_id):
     headers = {'Authorization': f'Bearer {access_token}'}
     params = {'limit': 100, 'offset': 0}
-    url = f"https://api.avito.ru/messenger/v1/accounts/{DIKON_ID}/chats/{chat_id}/messages"
+    url = f"https://api.avito.ru/messenger/v3/accounts/{DIKON_ID}/chats/{chat_id}/messages"
 
     async with aiohttp.ClientSession() as session:
         async with session.get(url, headers=headers, params=params) as response:
@@ -133,11 +163,13 @@ def map_avito_chats(raw_chats_data, my_user_id):
     return mapped_chats
 
 @dp.message(Command("report"))
-async def report(message: types.Message):
+async def start(message: types.Message):
     token = await get_avito_token()
     await message.answer(f"Токен получен: {token}")
-    await get_map_save_chats(token)
-    
+    await all_doing_for_chats(token)
+    await all_doing_for_messages(token)
+
+
 @dp.message()
 async def send_way(message: types.Message):
     await message.answer("Для формирования отчета, нажмите Меню и выберите Сформировать отчет")
