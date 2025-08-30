@@ -28,37 +28,12 @@ dp = Dispatcher()
 
 token_cache = TTLCache(maxsize=1, ttl=23.5 * 60 * 60)
 
-async def all_doing_for_messages(access_token):
-    all_messages_to_save = []
-
-    chats_list = await get_chat_from_db()
-
-    for chat_id in chats_list:
-        raw_messages = await get_avito_messages(access_token, chat_id)
-        mapped_messages = map_avito_messages(raw_messages, chat_id)
-        all_messages_to_save.extend(mapped_messages)
-
-    await save_messages_to_db(all_messages_to_save)  
-
-async def get_chat_from_db():
-    connection_string = f"postgresql://{PG_USER}:{PG_PASSWORD}@{PG_HOST}:{PG_PORT}/{PG_DATABASE}"
-    conn = await asyncpg.connect(connection_string)
-
-    try:
-        query = "SELECT chat_id FROM chats;"
-        chat_ids = await conn.fetch(query)
-        chats_list = [record['chat_id'] for record in chat_ids]
-        logger.info(f"Из БД получено {len(chats_list)} chat_id для обработки.")
-        return chats_list
-    finally:
-        await conn.close()
-
 async def get_avito_token():
     if 'avito_token' in token_cache:
-        logger.info("Используется кешированный токен Avito")
+        logger.info("Используется кешированный токен")
         return token_cache['avito_token']
     
-    logger.info("Запрашивается новый токен Avito")
+    logger.info("Запрашивается новый токен")
 
     data_api = {
         'client_id': CLIENT_ID,
@@ -74,6 +49,7 @@ async def get_avito_token():
             new_token = token_data["access_token"]
             token_cache['avito_token'] = new_token
 
+            logger.info("Функция get_avito_token завершена успешно")
             return new_token
 
 async def all_doing_for_chats(access_token):
@@ -82,6 +58,53 @@ async def all_doing_for_chats(access_token):
     map_data_chats = map_avito_chats(raw_data_chats, DIKON_ID)
 
     await save_chats_to_db(map_data_chats)
+    logger.info("Функция all_doing_for_chats завершена успешно")
+
+async def all_doing_for_messages(access_token):
+    all_messages_to_save = []
+
+    chats_list = await get_chat_from_db()
+
+    for chat_id in chats_list:
+        raw_messages = await get_avito_messages(access_token, chat_id)
+        mapped_messages = map_avito_messages(raw_messages, chat_id)
+        all_messages_to_save.extend(mapped_messages)
+
+    await save_messages_to_db(all_messages_to_save)
+    logger.info("Функция all_doing_for_messages завершена успешно")
+
+async def get_avito_chats(access_token):
+    headers =  {'Authorization': f'Bearer {access_token}'}
+    params = {'limit': 100,'offset': 0}
+    url = f"https://api.avito.ru/messenger/v2/accounts/{DIKON_ID}/chats"
+
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url, headers=headers, params=params) as response:
+            raw_chats = await response.json()
+            return raw_chats
+
+async def get_avito_messages(access_token, chat_id):
+    headers = {'Authorization': f'Bearer {access_token}'}
+    params = {'limit': 100, 'offset': 0}
+    url = f"https://api.avito.ru/messenger/v3/accounts/{DIKON_ID}/chats/{chat_id}/messages"
+
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url, headers=headers, params=params) as response:
+            raw_messages = await response.json()
+            return raw_messages             
+
+async def get_chat_from_db():
+    connection_string = f"postgresql://{PG_USER}:{PG_PASSWORD}@{PG_HOST}:{PG_PORT}/{PG_DATABASE}"
+    conn = await asyncpg.connect(connection_string)
+
+    try:
+        query = "SELECT chat_id FROM chats;"
+        chat_ids = await conn.fetch(query)
+        chats_list = [record['chat_id'] for record in chat_ids]
+        logger.info(f"Из БД получено {len(chats_list)} chat_id для обработки.")
+        return chats_list
+    finally:
+        await conn.close()
 
 async def save_chats_to_db(mapped_chats):
     connection_string = f"postgresql://{PG_USER}:{PG_PASSWORD}@{PG_HOST}:{PG_PORT}/{PG_DATABASE}"
@@ -146,34 +169,6 @@ async def save_messages_to_db(messages_list):
 
     finally:
         await conn.close()        
-     
-async def get_avito_chats(access_token):
-    headers =  {'Authorization': f'Bearer {access_token}'}
-    params = {'limit': 100,'offset': 0}
-    url = f"https://api.avito.ru/messenger/v2/accounts/{DIKON_ID}/chats"
-
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url, headers=headers, params=params) as response:
-            if response.status == 200:
-                raw_chats = await response.json()
-                return raw_chats
-            else:
-                logger.error(f"Ошибка получения чатов: {response.status}")
-                return {}
-            
-async def get_avito_messages(access_token, chat_id):
-    headers = {'Authorization': f'Bearer {access_token}'}
-    params = {'limit': 100, 'offset': 0}
-    url = f"https://api.avito.ru/messenger/v3/accounts/{DIKON_ID}/chats/{chat_id}/messages"
-
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url, headers=headers, params=params) as response:
-            if response.status == 200:
-                raw_messages = await response.json()
-                return raw_messages
-            else:
-                logger.error(f"Ошибка получения сообщений: {response.status}")
-                return {}
             
 def map_avito_chats(raw_chats_data, my_user_id):
     mapped_chats = []
@@ -193,7 +188,7 @@ def map_avito_chats(raw_chats_data, my_user_id):
             'updated_at': datetime.fromtimestamp(chat.get('updated', 0))
         }
         mapped_chats.append(mapped_chat)
-    
+
     return mapped_chats
 
 def map_avito_messages(raw_messages_data, chat_id):
@@ -225,7 +220,7 @@ async def start(message: types.Message):
 
 @dp.message()
 async def send_way(message: types.Message):
-    await message.answer("Для формирования отчета, нажмите Меню и выберите Сформировать отчет")
+    await message.answer("Don't Do It")
 
 if __name__ == "__main__":
     dp.run_polling(bot)
